@@ -1,0 +1,50 @@
+name: 米国株式市場暴落監視
+
+on:
+  schedule:
+    # 毎営業日 9:30 JST (UTC 0:30) に実行
+    # 月曜日〜金曜日の平日のみ
+    - cron: '30 0 * * 1-5'
+  
+  workflow_dispatch:  # 手動実行を許可
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+        with:
+          # state.jsonの変更をコミットするために必要
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Python環境のセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: 依存関係のインストール
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: 市場監視スクリプトの実行
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          python monitor.py
+      
+      - name: 状態ファイルのコミット
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add state.json
+          git diff --staged --quiet || git commit -m "chore: 状態ファイルを更新 [skip ci]"
+      
+      - name: 変更のプッシュ
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
