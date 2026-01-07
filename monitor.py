@@ -274,6 +274,36 @@ NASDAQ100 {nasdaq.get('drawdown', 'N/A')}% / S&P500 {sp500.get('drawdown', 'N/A'
     return message
 
 
+def format_normal_alert(data: Dict[str, Dict[str, float]]) -> str:
+    """
+    通常状態（投入対象外）の通知メッセージをフォーマットする
+    
+    Args:
+        data: 市場データ
+        
+    Returns:
+        フォーマット済みメッセージ
+    """
+    nasdaq = data.get('nasdaq', {})
+    sp500 = data.get('sp500', {})
+    vix = data.get('vix', {})
+    
+    message = f"""【米国株式市場・暴落監視レポート】
+
+■ 市場状態
+✅ 投入対象外（通常状態）
+
+■ 市場データ
+NASDAQ100: {nasdaq.get('current', 'N/A')} ({nasdaq.get('drawdown', 'N/A')}%)
+S&P500: {sp500.get('current', 'N/A')} ({sp500.get('drawdown', 'N/A')}%)
+VIX指数: {vix.get('value', 'N/A')}
+
+■ 補足
+市場は正常範囲内で推移しています。"""
+    
+    return message
+
+
 def main():
     """
     メイン処理
@@ -336,8 +366,10 @@ def main():
             save_state(new_state)
             
     else:
-        # 投入対象外
+        # 投入対象外（通常状態でも通知を送信）
         print("\n✅ 投入対象外（通常状態）")
+        message = format_normal_alert(data)
+        send_slack_notification(message, webhook_url)
         
         if prev_is_crash:
             # 暴落状態から回復
