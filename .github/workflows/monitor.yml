@@ -8,6 +8,10 @@ on:
   
   workflow_dispatch:  # 手動実行を許可
 
+# GitHub Actionsに必要な権限を付与
+permissions:
+  contents: write  # state.jsonをコミット・プッシュするために必要
+
 jobs:
   monitor:
     runs-on: ubuntu-latest
