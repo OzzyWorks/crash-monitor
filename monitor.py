@@ -51,44 +51,66 @@ def get_market_data() -> Dict[str, Dict[str, float]]:
     start_date = end_date - timedelta(days=LOOKBACK_DAYS + 100)
     
     for name, symbol in SYMBOLS.items():
-        try:
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(start=start_date, end=end_date)
-            
-            if hist.empty:
-                print(f"警告: {symbol} のデータが取得できませんでした", file=sys.stderr)
-                continue
-            
-            current_price = hist['Close'].iloc[-1]
-            
-            if name == 'vix':
-                # VIXは下落率を計算しない
-                result[name] = {
-                    'symbol': symbol,
-                    'current': round(current_price, 2),
-                    'value': round(current_price, 2)
-                }
-            else:
-                # 過去252営業日の高値を取得
-                if len(hist) >= LOOKBACK_DAYS:
-                    high_52w = hist['High'].iloc[-LOOKBACK_DAYS:].max()
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                print(f"データ取得中: {symbol} (試行 {retry_count + 1}/{max_retries})")
+                
+                # yfinanceのセッションにUser-Agentを設定
+                ticker = yf.Ticker(symbol)
+                
+                # period='1y'を使用してより確実にデータを取得
+                hist = ticker.history(period='1y', interval='1d')
+                
+                if not hist.empty and len(hist) > 0:
+                    current_price = hist['Close'].iloc[-1]
+                    
+                    if name == 'vix':
+                        # VIXは下落率を計算しない
+                        result[name] = {
+                            'symbol': symbol,
+                            'current': round(current_price, 2),
+                            'value': round(current_price, 2)
+                        }
+                        print(f"✓ {symbol}: {round(current_price, 2)}")
+                    else:
+                        # 過去252営業日の高値を取得
+                        if len(hist) >= LOOKBACK_DAYS:
+                            high_52w = hist['High'].iloc[-LOOKBACK_DAYS:].max()
+                        else:
+                            # データが不足している場合は取得可能な範囲の高値
+                            high_52w = hist['High'].max()
+                        
+                        # 下落率を計算（負の値）
+                        drawdown = ((current_price - high_52w) / high_52w) * 100
+                        
+                        result[name] = {
+                            'symbol': symbol,
+                            'current': round(current_price, 2),
+                            'high_52w': round(high_52w, 2),
+                            'drawdown': round(drawdown, 2)
+                        }
+                        print(f"✓ {symbol}: {round(current_price, 2)} ({round(drawdown, 2)}%)")
+                    
+                    break  # 成功したらループを抜ける
                 else:
-                    # データが不足している場合は取得可能な範囲の高値
-                    high_52w = hist['High'].max()
-                
-                # 下落率を計算（負の値）
-                drawdown = ((current_price - high_52w) / high_52w) * 100
-                
-                result[name] = {
-                    'symbol': symbol,
-                    'current': round(current_price, 2),
-                    'high_52w': round(high_52w, 2),
-                    'drawdown': round(drawdown, 2)
-                }
-                
-        except Exception as e:
-            print(f"エラー: {symbol} のデータ取得中にエラーが発生しました: {e}", file=sys.stderr)
-            continue
+                    print(f"警告: {symbol} のデータが空です (試行 {retry_count + 1})", file=sys.stderr)
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        import time
+                        time.sleep(2)  # 2秒待機してリトライ
+                    
+            except Exception as e:
+                print(f"エラー: {symbol} のデータ取得中にエラーが発生しました (試行 {retry_count + 1}): {e}", file=sys.stderr)
+                retry_count += 1
+                if retry_count < max_retries:
+                    import time
+                    time.sleep(2)  # 2秒待機してリトライ
+        
+        if name not in result:
+            print(f"✗ {symbol}: データ取得に失敗しました（全{max_retries}回の試行が失敗）", file=sys.stderr)
     
     return result
 
